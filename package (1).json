@@ -1,0 +1,15 @@
+{
+  "name": "tiktok-trivia-live",
+  "version": "1.0.0",
+  "description": "TikTok Live Trivia Game",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^4.22.1",
+    "socket.io": "^4.8.3",
+    "tiktok-live-connector": "^2.1.1-beta1"
+  }
+}
