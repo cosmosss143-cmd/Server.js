@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TikTok Live Trivia 🎮</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,wght@0,400;0,700;1,400&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131e;
+    --card: #1a1a2e;
+    --accent: #fe2c55;
+    --teal: #25f4ee;
+    --gold: #ffd700;
+    --text: #ffffff;
+    --muted: #8888aa;
+    --correct: #00e676;
+    --wrong: #ff1744;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* BG GRID */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(254,44,85,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(254,44,85,0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 24px 16px;
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 20px;
+  }
+
+  /* HEADER */
+  .header {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2.2rem;
+    letter-spacing: 2px;
+    background: linear-gradient(135deg, var(--accent), var(--teal));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .status-dot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.3s;
+  }
+  .dot.online { background: var(--correct); box-shadow: 0 0 8px var(--correct); animation: pulse 1.5s infinite; }
+  .dot.error { background: var(--wrong); }
+
+  @keyframes pulse {
+    0%,100% { opacity: 1; } 50% { opacity: 0.4; }
+  }
+
+  /* MAIN GAME AREA */
+  .game-area {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* SOAL CARD */
+  .soal-card {
+    background: var(--card);
+    border: 1px solid rgba(254,44,85,0.2);
+    border-radius: 16px;
+    padding: 28px;
+    position: relative;
+    overflow: hidden;
+    min-height: 280px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .soal-card::before {
+    content: '';
+    position: absolute;
+    top: -60px; right: -60px;
+    width: 180px; height: 180px;
+    background: radial-gradient(circle, rgba(254,44,85,0.12), transparent 70%);
+    pointer-events: none;
+  }
+
+  .nomor-soal {
+    font-size: 0.75rem;
+    color: var(--accent);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  .teks-soal {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(1.4rem, 3vw, 2rem);
+    line-height: 1.2;
+    margin-bottom: 24px;
+    color: var(--text);
+  }
+
+  .pilihan-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .pilihan {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+  }
+
+  .pilihan.benar {
+    background: rgba(0,230,118,0.15);
+    border-color: var(--correct);
+    color: var(--correct);
+  }
+
+  .pilihan.salah {
+    background: rgba(255,23,68,0.1);
+    border-color: rgba(255,23,68,0.3);
+    color: var(--wrong);
+    opacity: 0.5;
+  }
+
+  /* TIMER */
+  .timer-wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+
+  .timer-angka {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 3rem;
+    color: var(--teal);
+    min-width: 60px;
+    line-height: 1;
+    transition: color 0.3s;
+  }
+
+  .timer-angka.urgent { color: var(--accent); animation: shake 0.3s infinite; }
+
+  @keyframes shake {
+    0%,100% { transform: translateX(0); }
+    25% { transform: translateX(-2px); }
+    75% { transform: translateX(2px); }
+  }
+
+  .timer-bar-wrap {
+    flex: 1;
+    height: 6px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+
+  .timer-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--teal), var(--accent));
+    border-radius: 99px;
+    transition: width 0.9s linear, background 0.3s;
+    width: 100%;
+  }
+
+  /* STANDING CARD (JAWABAN BENAR) */
+  .standing-card {
+    background: var(--card);
+    border: 1px solid rgba(37,244,238,0.2);
+    border-radius: 14px;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    animation: slideIn 0.4s cubic-bezier(0.34,1.56,0.64,1);
+  }
+
+  @keyframes slideIn {
+    from { transform: translateX(-20px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+
+  .standing-nama {
+    font-weight: 700;
+    color: var(--teal);
+    flex: 1;
+  }
+
+  .standing-poin {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.2rem;
+    color: var(--gold);
+  }
+
+  /* KONTROL HOST */
+  .kontrol {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    padding: 12px 24px;
+    border: none;
+    border-radius: 10px;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 700;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.5px;
+  }
+
+  .btn-mulai {
+    background: linear-gradient(135deg, var(--accent), #ff6b8a);
+    color: white;
+    flex: 1;
+  }
+
+  .btn-skip {
+    background: rgba(255,255,255,0.07);
+    color: var(--text);
+    border: 1px solid rgba(255,255,255,0.12);
+  }
+
+  .btn-reset {
+    background: rgba(255,23,68,0.1);
+    color: var(--wrong);
+    border: 1px solid rgba(255,23,68,0.2);
+  }
+
+  .btn:hover { transform: translateY(-2px); filter: brightness(1.1); }
+  .btn:active { transform: translateY(0); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  /* LEADERBOARD */
+  .leaderboard {
+    background: var(--card);
+    border: 1px solid rgba(255,215,0,0.15);
+    border-radius: 16px;
+    padding: 20px;
+    height: fit-content;
+    position: sticky;
+    top: 24px;
+  }
+
+  .lb-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.4rem;
+    letter-spacing: 2px;
+    color: var(--gold);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .lb-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 200px;
+  }
+
+  .lb-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 10px;
+    transition: all 0.3s;
+    animation: lbIn 0.4s ease;
+  }
+
+  @keyframes lbIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .lb-rank {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.1rem;
+    min-width: 28px;
+    text-align: center;
+  }
+
+  .lb-rank.r1 { color: #ffd700; }
+  .lb-rank.r2 { color: #c0c0c0; }
+  .lb-rank.r3 { color: #cd7f32; }
+
+  .lb-nama {
+    flex: 1;
+    font-size: 0.88rem;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .lb-poin {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1rem;
+    color: var(--gold);
+  }
+
+  .lb-empty {
+    color: var(--muted);
+    font-size: 0.85rem;
+    text-align: center;
+    padding: 40px 0;
+  }
+
+  /* NOTIFIKASI */
+  .notif-wrap {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    z-index: 999;
+    pointer-events: none;
+  }
+
+  .notif {
+    background: var(--surface);
+    border-left: 3px solid var(--teal);
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 0.85rem;
+    max-width: 260px;
+    animation: notifIn 0.3s ease, notifOut 0.3s ease 2.7s forwards;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  }
+
+  .notif.gift { border-color: var(--gold); }
+  .notif.correct { border-color: var(--correct); }
+
+  @keyframes notifIn {
+    from { transform: translateX(40px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  @keyframes notifOut {
+    from { opacity: 1; } to { opacity: 0; }
+  }
+
+  /* LAYAR AWAL */
+  .layar-awal {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 60px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .layar-awal h2 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2.5rem;
+    letter-spacing: 3px;
+    background: linear-gradient(135deg, var(--accent), var(--teal));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .layar-awal p {
+    color: var(--muted);
+    max-width: 400px;
+    line-height: 1.6;
+  }
+
+  /* LAYAR SELESAI */
+  .layar-selesai {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 40px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .podium {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    margin: 20px 0;
+  }
+
+  .podium-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .podium-nama {
+    font-weight: 700;
+    font-size: 0.85rem;
+    max-width: 90px;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .podium-block {
+    width: 80px;
+    border-radius: 8px 8px 0 0;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 8px;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.4rem;
+  }
+
+  .podium-block.p1 { height: 100px; background: linear-gradient(180deg, #ffd700, #b8860b); color: #5a3e00; }
+  .podium-block.p2 { height: 70px; background: linear-gradient(180deg, #c0c0c0, #808080); color: #2a2a2a; }
+  .podium-block.p3 { height: 50px; background: linear-gradient(180deg, #cd7f32, #8b4513); color: #3a1a00; }
+
+  /* KOMENTAR LIVE */
+  .komentar-area {
+    background: var(--surface);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 12px;
+    padding: 12px;
+    max-height: 120px;
+    overflow-y: auto;
+  }
+
+  .komentar-item {
+    font-size: 0.78rem;
+    color: var(--muted);
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+
+  .komentar-item span { color: var(--teal); font-weight: 700; }
+
+  /* SETUP PANEL */
+  .setup-panel {
+    background: var(--card);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 14px;
+    padding: 16px;
+  }
+
+  .setup-label {
+    font-size: 0.78rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+  }
+
+  .setup-input {
+    width: 100%;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.9rem;
+    margin-bottom: 10px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .setup-input:focus { border-color: var(--accent); }
+
+  /* RESPONSIVE */
+  @media (max-width: 640px) {
+    .container { grid-template-columns: 1fr; }
+    .leaderboard { position: static; }
+    .pilihan-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container" id="app">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="logo">🎮 TikTok Trivia Live</div>
+    <div class="status-dot">
+      <div class="dot" id="statusDot"></div>
+      <span id="statusTeks">Menghubungkan...</span>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="game-area" id="gameArea">
+
+    <!-- LAYAR AWAL -->
+    <div class="layar-awal" id="layarAwal">
+      <h2>🎮 SIAP LIVE?</h2>
+      <p>Hubungkan ke TikTok Live kamu, lalu tekan <strong>Mulai Game</strong> untuk memulai kuis trivia interaktif!</p>
+
+      <div class="setup-panel" style="width:100%;max-width:420px;">
+        <div class="setup-label">Username TikTok (opsional override)</div>
+        <input class="setup-input" id="inputUsername" placeholder="@username_kamu" />
+        <div class="setup-label">Status Koneksi TikTok</div>
+        <div id="tiktokStatusInfo" style="color:var(--muted);font-size:0.85rem;">Menunggu koneksi dari server...</div>
+      </div>
+
+      <button class="btn btn-mulai" onclick="mulaiGame()" id="btnMulai" style="max-width:240px;margin-top:8px;">
+        ▶ Mulai Game
+      </button>
+    </div>
+
+    <!-- AREA SOAL (tersembunyi awalnya) -->
+    <div id="areaSoal" style="display:none; flex-direction:column; gap:16px;">
+
+      <!-- Timer -->
+      <div class="timer-wrap">
+        <div class="timer-angka" id="timerAngka">20</div>
+        <div class="timer-bar-wrap">
+          <div class="timer-bar" id="timerBar"></div>
+        </div>
+      </div>
+
+      <!-- Soal Card -->
+      <div class="soal-card">
+        <div class="nomor-soal" id="nomorSoal">SOAL 1 / 10</div>
+        <div class="teks-soal" id="teksSoal">Memuat soal...</div>
+        <div class="pilihan-grid" id="pilihanGrid"></div>
+      </div>
+
+      <!-- Komentar Live -->
+      <div class="setup-label" style="margin:0;">💬 Komentar Live</div>
+      <div class="komentar-area" id="komentarArea">
+        <div class="komentar-item" style="text-align:center;padding:12px;">Menunggu komentar...</div>
+      </div>
+
+      <!-- Kontrol -->
+      <div class="kontrol">
+        <button class="btn btn-skip" onclick="skipSoal()">⏭ Skip Soal</button>
+        <button class="btn btn-reset" onclick="resetGame()">🔄 Reset</button>
+      </div>
+    </div>
+
+    <!-- LAYAR SELESAI (tersembunyi) -->
+    <div id="layarSelesai" style="display:none;">
+      <div class="layar-selesai">
+        <h2 style="font-family:'Bebas Neue',sans-serif;font-size:2.5rem;letter-spacing:3px;color:var(--gold)">🏆 GAME SELESAI!</h2>
+        <p style="color:var(--muted)">Selamat untuk para pemenang!</p>
+        <div class="podium" id="podium"></div>
+        <button class="btn btn-mulai" onclick="resetGame()" style="margin-top:16px;">🔄 Main Lagi</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- LEADERBOARD SAMPING -->
+  <div class="leaderboard">
+    <div class="lb-title">🏅 Leaderboard</div>
+    <div class="lb-list" id="lbList">
+      <div class="lb-empty">Belum ada poin.<br>Mulai game dulu!</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- NOTIFIKASI -->
+<div class="notif-wrap" id="notifWrap"></div>
+
+<script>
+// ============================================
+// KONEKSI SOCKET.IO KE SERVER
+// Ganti URL ini dengan URL Replit kamu!
+// ============================================
+const SERVER_URL = 'https://node-creator--cosmosss143.replit.app';
+
+let socket;
+let waktuMax = 20;
+
+function initSocket() {
+  socket = io(SERVER_URL, { transports: ['websocket', 'polling'] });
+
+  socket.on('connect', () => {
+    updateStatus('online', '🟢 Server Terhubung');
+  });
+
+  socket.on('disconnect', () => {
+    updateStatus('error', '🔴 Server Terputus');
+  });
+
+  socket.on('tiktokStatus', (data) => {
+    const el = document.getElementById('tiktokStatusInfo');
+    if (data.status === 'connected') {
+      el.style.color = 'var(--correct)';
+      el.textContent = `✅ Terhubung ke @${data.username}`;
+    } else if (data.status === 'error') {
+      el.style.color = 'var(--wrong)';
+      el.textContent = `❌ Gagal: ${data.pesan}`;
+    } else {
+      el.style.color = 'var(--muted)';
+      el.textContent = '⚠️ TikTok disconnected, reconnecting...';
+    }
+  });
+
+  socket.on('stateAwal', (data) => {
+    renderLeaderboard(data.leaderboard);
+  });
+
+  socket.on('gameDimulai', () => {
+    tampilkanLayar('soal');
+  });
+
+  socket.on('soalBaru', (data) => {
+    waktuMax = data.waktu;
+    document.getElementById('nomorSoal').textContent = `SOAL ${data.nomor} / ${data.total}`;
+    document.getElementById('teksSoal').textContent = data.soal;
+    renderPilihan(data.pilihan);
+    updateTimer(data.waktu);
+  });
+
+  socket.on('timerUpdate', (data) => {
+    updateTimer(data.waktu);
+  });
+
+  socket.on('waktuHabis', (data) => {
+    // Highlight jawaban benar
+    document.querySelectorAll('.pilihan').forEach(el => {
+      const teks = el.textContent.toLowerCase();
+      const isBenar = teks.includes(data.jawabanBenar?.toLowerCase());
+      el.classList.add(isBenar ? 'benar' : 'salah');
+    });
+    showNotif(`⏱ Waktu habis! Jawaban: ${data.jawabanBenar}`, 'wrong');
+  });
+
+  socket.on('jawabanBenar', (data) => {
+    renderLeaderboard(data.leaderboard);
+    showNotif(`✅ ${data.nama} menjawab benar! +${data.poin} poin`, 'correct');
+    // Tambah item jawaban benar
+    addKomentar(data.nama, `✅ Jawaban benar! (+${data.poin})`);
+  });
+
+  socket.on('giftMasuk', (data) => {
+    showNotif(`🎁 ${data.nama} mengirim ${data.giftNama} x${data.jumlah}!`, 'gift');
+  });
+
+  socket.on('komentarMasuk', (data) => {
+    addKomentar(data.nama, data.komentar);
+  });
+
+  socket.on('gameSelesai', (data) => {
+    tampilkanLayar('selesai');
+    renderPodium(data.leaderboard);
+    renderLeaderboard(data.leaderboard);
+  });
+
+  socket.on('gameReset', () => {
+    tampilkanLayar('awal');
+    renderLeaderboard([]);
+  });
+}
+
+// ============================================
+// UI FUNCTIONS
+// ============================================
+function tampilkanLayar(layar) {
+  document.getElementById('layarAwal').style.display = layar === 'awal' ? 'flex' : 'none';
+  document.getElementById('areaSoal').style.display = layar === 'soal' ? 'flex' : 'none';
+  document.getElementById('layarSelesai').style.display = layar === 'selesai' ? 'block' : 'none';
+}
+
+function renderPilihan(pilihan) {
+  const grid = document.getElementById('pilihanGrid');
+  grid.innerHTML = pilihan.map(p =>
+    `<div class="pilihan">${p}</div>`
+  ).join('');
+}
+
+function updateTimer(waktu) {
+  const angka = document.getElementById('timerAngka');
+  const bar = document.getElementById('timerBar');
+  angka.textContent = waktu;
+  angka.classList.toggle('urgent', waktu <= 5);
+  bar.style.width = `${(waktu / waktuMax) * 100}%`;
+  if (waktu <= 5) {
+    bar.style.background = 'var(--accent)';
+  } else {
+    bar.style.background = 'linear-gradient(90deg, var(--teal), var(--accent))';
+  }
+}
+
+function renderLeaderboard(data) {
+  const list = document.getElementById('lbList');
+  if (!data || data.length === 0) {
+    list.innerHTML = '<div class="lb-empty">Belum ada poin.<br>Mulai game dulu!</div>';
+    return;
+  }
+  const rankEmoji = ['🥇','🥈','🥉'];
+  list.innerHTML = data.map(([nama, poin], i) => `
+    <div class="lb-item">
+      <div class="lb-rank r${i+1}">${rankEmoji[i] || (i+1)}</div>
+      <div class="lb-nama">${nama}</div>
+      <div class="lb-poin">${poin}</div>
+    </div>
+  `).join('');
+}
+
+function renderPodium(data) {
+  const podium = document.getElementById('podium');
+  const top3 = data.slice(0, 3);
+  const order = [1, 0, 2]; // urutan tampil: 2nd, 1st, 3rd
+  const heights = ['p2', 'p1', 'p3'];
+  const labels = ['🥈 2nd', '🥇 1st', '🥉 3rd'];
+
+  podium.innerHTML = order.map(i => {
+    if (!top3[i]) return '';
+    return `
+      <div class="podium-item">
+        <div class="podium-nama">${top3[i][0]}</div>
+        <div class="podium-block ${heights[order.indexOf(i)]}">${top3[i][1]}</div>
+        <div style="font-size:0.75rem;color:var(--muted)">${labels[order.indexOf(i)]}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function addKomentar(nama, teks) {
+  const area = document.getElementById('komentarArea');
+  // Hapus placeholder
+  if (area.querySelector('.komentar-item[style]')) area.innerHTML = '';
+
+  const div = document.createElement('div');
+  div.className = 'komentar-item';
+  div.innerHTML = `<span>@${nama}</span>: ${teks}`;
+  area.prepend(div);
+
+  // Batasi 20 komentar
+  while (area.children.length > 20) area.removeChild(area.lastChild);
+}
+
+function showNotif(teks, tipe = '') {
+  const wrap = document.getElementById('notifWrap');
+  const div = document.createElement('div');
+  div.className = `notif ${tipe}`;
+  div.textContent = teks;
+  wrap.prepend(div);
+  setTimeout(() => div.remove(), 3200);
+}
+
+function updateStatus(tipe, teks) {
+  const dot = document.getElementById('statusDot');
+  const label = document.getElementById('statusTeks');
+  dot.className = 'dot ' + tipe;
+  label.textContent = teks;
+}
+
+// ============================================
+// KONTROL HOST
+// ============================================
+function mulaiGame() {
+  socket.emit('mulaiGame');
+}
+
+function skipSoal() {
+  socket.emit('skipSoal');
+}
+
+function resetGame() {
+  socket.emit('resetGame');
+}
+
+// ============================================
+// INIT
+// ============================================
+initSocket();
+tampilkanLayar('awal');
+</script>
+</body>
+</html>
